@@ -3,7 +3,7 @@ from pinecone import Pinecone, ServerlessSpec
 
 from app.embedding import generate_embedding
 
-# Pinecone ayarlamaları
+# Pinecone ayarlamaları, API anahtarını kullanarak Pinecone ile bağlantı kurulması
 pc = Pinecone(api_key="e06ae660-7336-4c18-8eb8-979c9cb1df1a")
 
 #Pinecone'da kullanılan indexin adı

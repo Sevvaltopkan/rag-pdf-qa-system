@@ -1,0 +1,7 @@
+fastapi
+uvicorn
+requests
+pdfplumber
+transformers
+torch
+pinecone-client

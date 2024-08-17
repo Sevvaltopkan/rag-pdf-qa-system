@@ -25,30 +25,27 @@ pc = Pinecone(api_key="YOUR_PINECONE_API_KEY")
 Proje, bir PDF dosyasını indirir, içeriğini işler ve sorgulama yapmanızı sağlar. API, URL ve sorguyu JSON formatında alır ve en alakalı sonuçları döner.
 
 ### API Endpoint
+- POST /query/: Bu endpoint, bir PDF dosyasını indirir, içeriklerini işler ve verilen sorgu ile en alakalı sonuçları döner.
 
-- **POST /query/**: Bu endpoint, bir PDF dosyasını indirir, içeriklerini işler ve verilen sorgu ile en alakalı sonuçları döner.
-
-#### JSON Body
-
+JSON Body
 - `url`: PDF dosyasının URL'si (string)
 - `query`: Sorgulamak istediğiniz metin (string)
 
-#### Örnek JSON
-
-```bash
+Örnek JSON
+```json
 {
   "url": "https://example.com/sample.pdf",
   "query": "What is the meaning of life?"
 }
 ```
 
-#### Örnek cURL Komutu
+Örnek cURL Komutu
 
 ```bash
 curl -X POST "http://localhost:8000/query/" -H "Content-Type: application/json" -d '{"url":"https://example.com/sample.pdf", "query":"What is the meaning of life?"}'
 ```
 
-### Projeyi Çalıştırma
+## Projeyi Çalıştırma
 
 Aşağıdaki komutla FastAPI uygulamasını başlatabilirsiniz:
 
@@ -56,3 +53,31 @@ Aşağıdaki komutla FastAPI uygulamasını başlatabilirsiniz:
 uvicorn app.main:app --reload
 ```
 
+```css
+rag-pdf-qa-system/
+│
+├── app/
+│   ├── __init__.py
+│   ├── main.py
+│   ├── pdf_processing.py
+│   ├── embedding.py
+│   └── pinecone_utils.py
+│
+├── Dockerfile
+├── requirements.txt
+└── README.md
+```
+
+### Docker ile Çalıştırma
+
+Projenizi Docker kullanarak çalıştırmak için aşağıdaki adımları izleyin:
+
+1. Docker image oluşturun:
+```bash
+docker build -t pdf-qa-api .
+```
+
+2. Docker container'ı çalıştırın:
+```bash
+docker run -d -p 80:80 pdf-qa-api
+```

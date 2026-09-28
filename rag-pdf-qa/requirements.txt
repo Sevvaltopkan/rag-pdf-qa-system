@@ -1,8 +1,9 @@
 fastapi
 uvicorn
 pdfminer.six
-pinecone-client[grpc]
+pinecone
 requests
 transformers
 torch
 numpy<2
+python-dotenv

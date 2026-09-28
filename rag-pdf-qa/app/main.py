@@ -1,31 +1,74 @@
-from fastapi import FastAPI, HTTPException
-from pydantic import BaseModel
-from app.pdf_processing import process_and_index_pdf
+from fastapi import FastAPI
+from pydantic import BaseModel, Field
+
 from app.embedding import generate_embedding
-from app.pinecone_utils import index, query_pinecone
+from app.pdf_processing import process_and_index_pdf
+from app.pinecone_utils import query_pinecone
 
-app = FastAPI()
 
-# Body içinden gelecek veriler için Pydantic modeli tanımlanması
+app = FastAPI(
+    title="PDF RAG API",
+    description="Semantic retrieval and RAG API for PDF documents.",
+    version="2.0.0"
+)
+
+
 class QueryRequest(BaseModel):
     url: str
     query: str
+    top_k: int = Field(default=5, ge=1, le=10)
 
-# API için POST endpoint tanımlanması
-@app.post("/query/")
+
+class RetrievedChunk(BaseModel):
+    text: str
+    score: float
+    chunk_index: int
+
+
+class QueryResponse(BaseModel):
+    query: str
+    document_id: str
+    results: list[RetrievedChunk]
+
+
+@app.get("/health")
+def health_check():
+    return {
+        "status": "ok"
+    }
+
+
+@app.post("/query/", response_model=QueryResponse)
 def query_pdf(request: QueryRequest):
-    # Gelen request'in body kısmından url ve query değerlerini alınması
-    url = request.url
-    query = request.query
-    
-    # PDF'i indirip işleyerek indekslenmesi
-    process_and_index_pdf(url)
-    
-    # Sorgu için embedding (vektör) oluşturulması
-    query_embedding = generate_embedding(query)
+    """
+    Indexes the PDF when necessary and performs semantic
+    retrieval against that specific document.
+    """
+    document_id = process_and_index_pdf(request.url)
 
-    # En iyi eşleşen 5 sonucu alıp, bunları dönen sonuç listesine eklenmesi
-    query_response = query_pinecone(query_embedding, top_k=5)
-    
-    results = [match['metadata']['text'] for match in query_response['matches']]
-    return {"query": query, "results": results}
+    query_embedding = generate_embedding(request.query)
+
+    query_response = query_pinecone(
+        query_embedding=query_embedding,
+        pdf_hash=document_id,
+        top_k=request.top_k
+    )
+
+    results = []
+
+    for match in query_response["matches"]:
+        metadata = match.get("metadata", {})
+
+        results.append(
+            RetrievedChunk(
+                text=metadata.get("text", ""),
+                score=float(match.get("score", 0.0)),
+                chunk_index=int(metadata.get("chunk_index", -1))
+            )
+        )
+
+    return QueryResponse(
+        query=request.query,
+        document_id=document_id,
+        results=results
+    )

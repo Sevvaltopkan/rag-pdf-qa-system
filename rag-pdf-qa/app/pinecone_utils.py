@@ -1,47 +1,99 @@
-import hashlib
+import os
+
+from dotenv import load_dotenv
 from pinecone import Pinecone, ServerlessSpec
 
 from app.embedding import generate_embedding
 
-# Pinecone ayarlamaları, API anahtarını kullanarak Pinecone ile bağlantı kurulması
-pc = Pinecone(api_key="e06ae660-7336-4c18-8eb8-979c9cb1df1a")
 
-#Pinecone'da kullanılan indexin adı
-index_name = "pdf-embedding-index"
+load_dotenv()
+
+PINECONE_API_KEY = os.getenv("PINECONE_API_KEY")
+
+if not PINECONE_API_KEY:
+    raise ValueError(
+        "PINECONE_API_KEY is not configured. "
+        "Add it to your .env file."
+    )
 
 
-#Belirtilen indexin oluşturulmaması durumunda yeni bir index oluşturulması
-if index_name not in pc.list_indexes().names():
+pc = Pinecone(api_key=PINECONE_API_KEY)
+
+INDEX_NAME = "pdf-embedding-index"
+EMBEDDING_DIMENSION = 384
+
+
+if INDEX_NAME not in pc.list_indexes().names():
     pc.create_index(
-        name=index_name,
-        dimension=384,  # MiniLM modelinin çıktısı 384 boyutludur
-        metric='cosine',
+        name=INDEX_NAME,
+        dimension=EMBEDDING_DIMENSION,
+        metric="cosine",
         spec=ServerlessSpec(
-            cloud='aws',
-            region='us-west-2'
+            cloud="aws",
+            region="us-west-2"
         )
     )
 
-#İndex kullanımı için referans alınması
-index = pc.Index(index_name)
 
-#PDF'in indekslenme kontrolünün yapılması
-def pdf_already_indexed(pdf_content):
-    pdf_text = pdf_content.decode('utf-8', errors='ignore')
-    chunks = pdf_text.split()[:100]
-    chunk_text = ' '.join(chunks)
-    vector = generate_embedding(chunk_text)
+index = pc.Index(INDEX_NAME)
 
-    query_response = index.query(vector=vector.tolist(), top_k=1, include_metadata=True)
-    return len(query_response['matches']) > 0
 
-#PDF'in parçalara ayrılmasının ardından her bir parçanın Pinecone'a indekslenmesi
-def index_pdf_chunks(chunks, pdf_hash):
-    for i, chunk in enumerate(chunks):
+def pdf_already_indexed(pdf_hash: str) -> bool:
+    """
+    Checks whether the first chunk of a PDF already exists
+    in its dedicated Pinecone namespace.
+    """
+    first_chunk_id = f"{pdf_hash}_0"
+
+    response = index.fetch(
+        ids=[first_chunk_id],
+        namespace=pdf_hash
+    )
+
+    return bool(response.vectors)
+
+
+def index_pdf_chunks(chunks: list[str], pdf_hash: str) -> None:
+    """
+    Generates embeddings for PDF chunks and stores them
+    inside a document-specific Pinecone namespace.
+    """
+    vectors = []
+
+    for chunk_index, chunk in enumerate(chunks):
         embedding = generate_embedding(chunk)
-        # upsert() çağrısını doğru argümanlarla güncellenmesi
-        index.upsert(vectors=[(f"{pdf_hash}_{i}", embedding, {"text": chunk})])
 
-#Sorgu için Pinecone'da arama yapılması
-def query_pinecone(query_embedding, top_k=5):
-    return index.query(vector=query_embedding.tolist(), top_k=top_k, include_metadata=True)
+        vectors.append(
+            {
+                "id": f"{pdf_hash}_{chunk_index}",
+                "values": embedding.tolist(),
+                "metadata": {
+                    "text": chunk,
+                    "chunk_index": chunk_index,
+                    "document_id": pdf_hash
+                }
+            }
+        )
+
+    if vectors:
+        index.upsert(
+            vectors=vectors,
+            namespace=pdf_hash
+        )
+
+
+def query_pinecone(
+    query_embedding,
+    pdf_hash: str,
+    top_k: int = 5
+):
+    """
+    Searches only within the namespace belonging
+    to the requested PDF.
+    """
+    return index.query(
+        vector=query_embedding.tolist(),
+        top_k=top_k,
+        include_metadata=True,
+        namespace=pdf_hash
+    )
